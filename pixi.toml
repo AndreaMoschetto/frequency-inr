@@ -1,0 +1,32 @@
+[project]
+authors = ["aegroto <aegroto@protonmail.com>"]
+channels = ["nvidia", "conda-forge", "pytorch"]
+description = "ICIP 2024 - Implicit Image Compression 101"
+name = "icip-2024-inr-images-tutorial"
+platforms = ["linux-64", "osx-arm64"]
+version = "0.1.0"
+
+[tasks]
+fit = "python -m bin.fit"
+capabilities = "python -m bin.capabilities"
+infer = "python -m bin.infer"
+export_stats = "python -m bin.export_stats"
+pack = "python -m bin.pack"
+unpack = "python -m bin.unpack"
+
+encode = "python -m bin.encode"
+decode = "python -m bin.decode"
+
+format = "ruff format"
+lint = "ruff check"
+
+[dependencies]
+python = "3.12.*"
+scikit-image = ">=0.24.0,<0.25"
+pillow = ">=10.4.0,<11"
+ruff = ">=0.6.8,<0.7"
+
+[pypi-dependencies]
+torch = ">=2.4.1, <3"
+torchvision = ">=0.19.1, <0.20"
+constriction = ">=0.4.0, <0.5"
