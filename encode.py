@@ -4,7 +4,7 @@ from bin.pack import pack
 from modules.data import ImageData
 from modules.device import load_device
 from modules.helpers.config import load_config
-from modules.helpers.reproducibility import load_seed_from_env
+from modules.helpers.reproducibility import setup_reproducibility
 from modules.logging import init_logger, setup_logging
 
 LOGGER = init_logger(__name__)
@@ -32,7 +32,7 @@ def main():
 
 
 def encode(config, image_data, output_path, device):
-    load_seed_from_env()
+    setup_reproducibility(42)
     fitted_state_dict = fit(config, image_data, device)
     pack(config, fitted_state_dict, output_path, device)
 
