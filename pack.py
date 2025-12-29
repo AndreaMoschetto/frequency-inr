@@ -44,7 +44,10 @@ def pack(config, state_dict, output_path, device):
 
     LOGGER.debug(f"Packed model stream length: {len(stream)}")
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    directory = os.path.dirname(output_path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
     with open(output_path, "wb") as file:
         file.write(stream.get_bytes())
 
