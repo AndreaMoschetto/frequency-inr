@@ -11,13 +11,14 @@ from modules.training import Trainer, TrainerConfiguration
 
 
 def model_builder():
+    # Setup identical to the Fourier version for a fair comparison
     encoder = PositionalEncoder(num_frequencies=16, scale=1.4)
 
     network = Siren(
         input_features=encoder.output_features_for(2),
-        hidden_features=128,
-        hidden_layers=2,
-        output_features=3,
+        hidden_features=256,  # MATCHED: Same width as Fourier config
+        hidden_layers=3,      # MATCHED: Same depth as Fourier config
+        output_features=3,    # ONLY DIFFERENCE: Here we want standard RGB (3 channels)
     )
 
     return CoordinatesBasedRepresentation(encoder, network)
@@ -31,8 +32,8 @@ def trainer_builder_for(iterations: int):
                 scheduler_builder=scheduler_builder,
                 loss_fn_builder=loss_fn_builder,
                 iterations=iterations,
-                log_interval=10,
-                shuffle_factor=16,
+                log_interval=50,
+                shuffle_factor=1,  # MATCHED: Same shuffling factor (low/none)
             ),
             model,
             image,
@@ -47,11 +48,13 @@ def quantizer_builder(_):
 
 
 def optimizer_builder(parameters):
-    return torch.optim.Adam(parameters, lr=1.0e-3)
+    # MATCHED: Same Learning Rate as Fourier
+    return torch.optim.Adam(parameters, lr=5e-4)
 
 
 def scheduler_builder(optimizer):
-    return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 50, 1.0e-4)
+    # MATCHED: Same scheduler decay
+    return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, 500, 1.0e-5)
 
 
 def loss_fn_builder():
@@ -61,12 +64,15 @@ def loss_fn_builder():
 phases = {
     "full_precision": FittingPhaseConfiguration(
         model_builder=model_builder,
-        trainer_builder=trainer_builder_for(100),
+        trainer_builder=trainer_builder_for(500),  # MATCHED: 500 iterations
     ),
-    "8bits_qat": FittingPhaseConfiguration(
-        model_builder=model_builder,
-        trainer_builder=trainer_builder_for(20),
-        quantizer_builder=quantizer_builder,
-        recalibrate_quantizers=True,
-    ),
+    # We disable the QAT (Quantization) phase here as well
+    # to compare only the pure reconstruction capability.
+
+    # "8bits_qat": FittingPhaseConfiguration(
+    #     model_builder=model_builder,
+    #     trainer_builder=trainer_builder_for(200),
+    #     quantizer_builder=quantizer_builder,
+    #     recalibrate_quantizers=True,
+    # ),
 }

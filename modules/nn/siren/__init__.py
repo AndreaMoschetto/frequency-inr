@@ -35,7 +35,8 @@ class Siren(nn.Module):
             initialize_siren_layer(hidden_layer, period, a)
             layers.append(hidden_layer)
             layers.append(Sine(period))
-
+        print("SIREN hidden features:", hidden_features)
+        print("SIREN output features:", output_features)
         last_layer = QuantizableLinear(hidden_features, output_features)
         initialize_siren_layer(last_layer, period, a)
         layers.append(last_layer)

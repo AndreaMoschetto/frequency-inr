@@ -3,3 +3,8 @@
 *.egg-info
 
 **/*.pyc
+*.png
+*.jpg
+outputs/
+outputs/**
+.DS_Store

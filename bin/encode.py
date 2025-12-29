@@ -1,7 +1,7 @@
 import argparse
 from bin.fit import fit
 from bin.pack import pack
-from modules.data import ImageData
+from modules.data import ImageData, FourierImageData
 from modules.device import load_device
 from modules.helpers.config import load_config
 from modules.helpers.reproducibility import load_seed_from_env
@@ -26,7 +26,12 @@ def main():
     config = load_config(args.config)
     device = load_device()
 
-    image_data = ImageData(args.image_path, device)
+    if args.config == "fourier":
+        LOGGER.info("Loading Fourier image data (FFT)...")
+        image_data = FourierImageData(args.image_path, device)
+    else:
+        # Otherwise, use the classic RGB image data loader
+        image_data = ImageData(args.image_path, device)
 
     encode(config, image_data, args.output_path, device)
 

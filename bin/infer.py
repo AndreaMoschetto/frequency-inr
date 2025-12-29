@@ -2,7 +2,7 @@ import argparse
 import torch
 
 
-from modules.data import dump_reconstructed_tensor
+from modules.data import dump_reconstructed_fourier, dump_reconstructed_tensor
 from modules.device import load_device
 from modules.helpers.config import load_config
 from modules.logging import init_logger, setup_logging
@@ -56,7 +56,11 @@ def infer(config, state_dict, resolution, dump_path, device):
     with torch.no_grad():
         reconstructed_tensor = model(input)
 
-    dump_reconstructed_tensor(reconstructed_tensor, dump_path)
+    if reconstructed_tensor.shape[0] == 6:
+        LOGGER.info("Detected 6 channels. Reconstructing from Frequency Domain.")
+        dump_reconstructed_fourier(reconstructed_tensor, dump_path)
+    else:
+        dump_reconstructed_tensor(reconstructed_tensor, dump_path)
 
 
 if __name__ == "__main__":

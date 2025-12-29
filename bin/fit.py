@@ -4,7 +4,7 @@ import torch
 import os
 from bin.export_stats import export_stats
 from bin.infer import infer
-from modules.data import ImageData
+from modules.data import FourierImageData, ImageData
 from modules.device import load_device
 from modules.helpers.config import load_config
 from modules.logging import init_logger, setup_logging
@@ -110,7 +110,12 @@ def main():
     else:
         initial_state_dict = None
 
-    image_data = ImageData(args.image_file_path, device)
+    if "fourier" in args.config:
+        LOGGER.info("Loading data in Frequency Domain (Fourier)")
+        image_data = FourierImageData(args.image_file_path, device)
+    else:
+        LOGGER.info("Loading data in Spatial Domain (Standard)")
+        image_data = ImageData(args.image_file_path, device)
 
     fit(config, image_data, device, initial_state_dict, args.results_folder)
 
