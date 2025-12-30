@@ -1,6 +1,6 @@
 import argparse
 import torch
-from modules.data import dump_reconstructed_tensor, dump_reconstructed_fourier
+from modules.data import dump_reconstructed_tensor, dump_reconstructed_fourier, dump_reconstructed_dct
 from modules.device import load_device
 from modules.helpers.config import load_config
 from modules.logging import init_logger, setup_logging
@@ -16,6 +16,7 @@ def load_args():
     parser.add_argument("output_path", type=str)
     parser.add_argument("--config", type=str, required=True)
     parser.add_argument("--mode", type=str, choices=["full", "quantized"], default="full")
+    parser.add_argument("--original_image", type=str, default=None, help="Path to original image for DC transplant")
     return parser.parse_args()
 
 
@@ -35,28 +36,30 @@ def main():
     model.to(device)
 
     if args.mode == "full":
-        # --- Load Standard PyTorch File ---
         LOGGER.info(f"Loading raw weights from {args.model_path}...")
         state_dict = torch.load(args.model_path, map_location=device, weights_only=True)
         model.load_state_dict(state_dict, strict=False)
 
     elif args.mode == "quantized":
-        # --- Decode Compressed Bitstream ---
         LOGGER.info(f"Unpacking bitstream from {args.model_path}...")
         stream = ByteStream.load(args.model_path)
         model.unpack(stream)
 
     resolution = parse_resolution(args.resolution)
-
     LOGGER.info("Running inference...")
     input_coordinates = model.generate_input(resolution).to(device)
 
     with torch.no_grad():
         reconstructed = model(input_coordinates)
 
-    # Save output based on domain (Spatial vs Fourier)
     if args.config == "fourier":
-        dump_reconstructed_fourier(reconstructed, args.output_path)
+        try:
+            dump_reconstructed_fourier(reconstructed, args.output_path, original_image_path=args.original_image)
+        except NameError:
+            pass
+    elif args.config == "dct":
+        LOGGER.info("Decoding DCT image...")
+        dump_reconstructed_dct(reconstructed, args.output_path, original_image_path=args.original_image)
     else:
         dump_reconstructed_tensor(reconstructed, args.output_path)
 

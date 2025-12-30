@@ -4,7 +4,7 @@ import torch
 import os
 from bin.export_stats import export_stats
 from bin.infer import infer
-from modules.data import FourierImageData, ImageData
+from modules.data import FourierImageData, ImageData, DCTImageData
 from modules.device import load_device
 from modules.helpers.config import load_config
 from modules.logging import init_logger, setup_logging
@@ -37,7 +37,7 @@ def __fit_in_phase(config, image, device, initial_state_dict=None):
     initialize_quantizers(model, config.quantizer_builder)
     model.to(device)
 
-    if config.recalibrate_quantizers:
+    if hasattr(config, "recalibrate_quantizers") and config.recalibrate_quantizers:
         LOGGER.debug("Recalibrating quantizers...")
         recalibrate_quantizers(model)
 
@@ -61,7 +61,7 @@ def __fit_in_phase(config, image, device, initial_state_dict=None):
 
 
 def __run_phase(
-    config, image_data: ImageData, device, initial_state_dict=None, dump_folder=None
+    config, image_data, device, initial_state_dict=None, dump_folder=None
 ):
     trained_state_dict = __fit_in_phase(
         config,
@@ -113,6 +113,9 @@ def main():
     if "fourier" in args.config:
         LOGGER.info("Loading data in Frequency Domain (Fourier)")
         image_data = FourierImageData(args.image_file_path, device)
+    elif "dct" in args.config:
+        LOGGER.info("Loading data in Frequency Domain (DCT)")
+        image_data = DCTImageData(args.image_file_path, device)
     else:
         LOGGER.info("Loading data in Spatial Domain (Standard)")
         image_data = ImageData(args.image_file_path, device)
