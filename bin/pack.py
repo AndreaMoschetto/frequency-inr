@@ -35,7 +35,7 @@ def main():
 def pack(config, state_dict, output_path, device):
     model = config.model_builder()
     initialize_quantizers(model, config.quantizer_builder)
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=False)
     model.to(device)
 
     LOGGER.debug(f"Model architecture: {model}")
