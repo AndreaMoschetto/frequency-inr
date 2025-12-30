@@ -11,9 +11,6 @@ We compare three different modalities:
 2.  **Discrete Cosine Transform (DCT):** Fitting the network on the DCT-II coefficients.
 3.  **Fourier Domain (FFT):** Fitting the network on the complex spectrum (Real + Imaginary parts).
 
-> **Note on Frequency Reconstruction:**
-> To address the "DC Drift" phenomenon (loss of absolute luminance/color accuracy), the frequency-based decoders use a **Hybrid Reconstruction** technique. They require the original image during decoding to transplant the exact DC coefficient (mean color) back into the reconstructed spectrum.
-
 ## Usage
 
 You can reproduce the study using the commands below. The pipeline consists of two steps for each method:
