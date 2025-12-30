@@ -1,101 +1,108 @@
-from typing import Tuple
-import torchvision
-import PIL
 import torch
-from skimage import io
-from torch import fft
+from torch import Tensor
+from torchvision.io import read_image, write_png
+from torchvision.transforms import ConvertImageDtype, Normalize
 
-from modules.logging import init_logger
+LOG_SCALE_FACTOR = 6.0
 
-LOGGER = init_logger(__name__)
+
+def save_spectrum_debug(tensor_cw, filename):
+    """
+    Helper function to visualize the spectrum.
+    It expects a tensor (Channels, H, W) already log-compressed or scaled.
+    We take only the magnitude of the first channel (R or G) for visualization.
+    """
+
+    # We assume structure: R_real, R_imag, G_real, ...
+    # We take index 0 (Real) and 1 (Imag) if the tensor is raw complex separated
+    # But here the tensor is already "packed". We estimate the global energy.
+
+    energy = tensor_cw.abs().mean(dim=0)  # (H, W)
+
+    v_min, v_max = energy.min(), energy.max()
+    if v_max - v_min > 1e-5:
+        vis = (energy - v_min) / (v_max - v_min)
+    else:
+        vis = energy
+
+    write_png(ConvertImageDtype(torch.uint8)(vis.unsqueeze(0).cpu()), filename)
 
 
 class ImageData:
-    """Standard spatial image data (RGB)"""
+    def __init__(self, image_path: str, device: str):
+        self.image = read_image(image_path).to(device)
+        self.image = ConvertImageDtype(torch.float32)(self.image)
+        self.transform = Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+        self.tensor = self.transform(self.image)
 
-    def __init__(self, path, device):
-        pil_image = PIL.Image.open(path).convert("RGB")
-        self.path = path
-        # Tensor shape loaded by torchvision is (3, H, W)
-        self.tensor = torchvision.transforms.functional.to_tensor(pil_image).to(device)
-        self.height = self.tensor.shape[1]
-        self.width = self.tensor.shape[2]
-
-    def resolution(self) -> Tuple[int, int]:
-        return (self.height, self.width)
-
-    def num_pixels(self) -> int:
-        return self.width * self.height
+    def get_image(self) -> Tensor:
+        return self.tensor
 
 
-class FourierImageData(ImageData):
-    """Spectral domain data (FFT of RGB)"""
+class FourierImageData:
+    def __init__(self, image_path: str, device: str):
+        raw_image = read_image(image_path).to(device)
+        raw_image = ConvertImageDtype(torch.float32)(raw_image)
 
-    def __init__(self, path, device):
-        super().__init__(path, device)
+        fft = torch.fft.fft2(raw_image, dim=(-2, -1), norm="ortho")
+        fft_shifted = torch.fft.fftshift(fft, dim=(-2, -1))
 
-        # Compute FFT2 (using ortho norm)
-        # Input (3, H, W) -> Output (3, H, W) Complex
-        fft_tensor = fft.fft2(self.tensor, norm="ortho")
+        real = fft_shifted.real
+        imag = fft_shifted.imag
 
-        # Shift
-        fft_shifted = fft.fftshift(fft_tensor)
+        self.tensor = torch.cat([real, imag], dim=0)
+        self.tensor = torch.sign(self.tensor) * torch.log1p(self.tensor.abs())
 
-        # Stack Real and Imaginary
-        # Concatenate on channel dim (0) -> Result (6, H, W)
-        self.tensor = torch.cat([fft_shifted.real, fft_shifted.imag], dim=0).to(device)
+        print("[DEBUG] Saving Ground Truth Spectrum to 'debug_spectrum_TRUTH.png'...")
+        save_spectrum_debug(self.tensor, "debug_spectrum_TRUTH.png")
 
-        LOGGER.info(f"Fourier Data created. Shape: {self.tensor.shape} (expected 6 channels)")
+        self.tensor = self.tensor / LOG_SCALE_FACTOR
 
-
-def dump_reconstructed_tensor(reconstructed_tensor: torch.Tensor, path: str):
-    """
-    Standard spatial dump.
-    Expects input tensor in shape (H, W, C) from the model.
-    """
-    reconstructed_image = (
-        reconstructed_tensor.detach()
-        .clamp(0.0, 1.0)
-        .mul(255.0)
-        .round()
-        .to(torch.uint8)
-        .cpu()
-        .numpy()
-    )
-
-    # Check shape
-    if reconstructed_image.ndim == 3 and reconstructed_image.shape[0] < 10:
-        # If by mistake we got (C, H, W), fix it to (H, W, C)
-        LOGGER.warning(f"Tensor shape {reconstructed_image.shape} looks channel-first. Transposing.")
-        reconstructed_image = reconstructed_image.transpose(1, 2, 0)
-
-    LOGGER.debug(f"Saving image with shape: {reconstructed_image.shape}")
-    io.imsave(path, reconstructed_image)
+    def get_image(self) -> Tensor:
+        return self.tensor
 
 
-def dump_reconstructed_fourier(reconstructed_tensor: torch.Tensor, path: str):
-    """
-    Inverse pipeline: 
-    Model Output (H, W, 6) -> Transpose to (6, H, W) -> Complex -> IFFT -> Real Image (C, H, W) -> Save
-    """
-    with torch.no_grad():
-        # The model outputs (H, W, 6), but for torch operations we want (6, H, W)
-        # So we move the last dim (Channels) to the first dim.
-        tensor_ch_first = reconstructed_tensor.movedim(2, 0)  # (6, H, W)
+def dump_reconstructed_tensor(tensor: Tensor, output_path: str):
+    tensor = tensor.permute(2, 0, 1)
+    tensor = (tensor * 0.5) + 0.5
+    tensor = tensor.clamp(0, 1)
+    tensor = ConvertImageDtype(torch.uint8)(tensor)
+    write_png(tensor.cpu(), output_path)
 
-        # Split back into Real and Imaginary
-        real_part, imag_part = torch.chunk(tensor_ch_first, 2, dim=0)
 
-        # Recombine into Complex Tensor
-        complex_tensor = torch.complex(real_part, imag_part)
+def dump_reconstructed_fourier(tensor: Tensor, output_path: str):
+    # input tensor shape: (Height, Width, 6)
+    tensor = tensor.permute(2, 0, 1)  # -> (6, H, W)
 
-        # Inverse Shift
-        unshifted = fft.ifftshift(complex_tensor)
+    # 1. Denormalize (x * 6.0) -> Return to Logarithmic space
+    tensor_log_scaled = tensor * LOG_SCALE_FACTOR
 
-        # Inverse FFT
-        spatial_tensor = fft.ifft2(unshifted, norm="ortho").real  # Result is (3, H, W)
+    # --- DEBUG: Save the prediction ---
+    # Save NOW, while still in logarithmic space (readable)
+    print(f"[DEBUG] Saving Predicted Spectrum to 'debug_spectrum_PRED.png'...")
+    save_spectrum_debug(tensor_log_scaled, "debug_spectrum_PRED.png")
+    # --------------------------------------------------
 
-        # Prepare for saving: convert (3, H, W) to (H, W, 3) just because dump_reconstructed_tensor expects HWC
-        spatial_tensor_hwc = spatial_tensor.movedim(0, 2)
+    # 2. INVERSE LOG COMPRESSION
+    tensor = torch.sign(tensor_log_scaled) * torch.expm1(tensor_log_scaled.abs())
 
-        dump_reconstructed_tensor(spatial_tensor_hwc, path)
+    channels = tensor.shape[0] // 2
+    real = tensor[:channels, :, :]
+    imag = tensor[channels:, :, :]
+
+    complex_spectrum = torch.complex(real, imag)
+
+    unshifted_spectrum = torch.fft.ifftshift(complex_spectrum, dim=(-2, -1))
+    reconstructed_image = torch.fft.ifft2(unshifted_spectrum, dim=(-2, -1), norm="ortho")
+    image_real = reconstructed_image.real
+
+    # Auto-Exposure
+    v_min, v_max = image_real.min(), image_real.max()
+    if v_max - v_min > 1e-5:
+        image_normalized = (image_real - v_min) / (v_max - v_min)
+        out_uint8 = ConvertImageDtype(torch.uint8)(image_normalized)
+    else:
+        image_clamped = image_real.clamp(0, 1)
+        out_uint8 = ConvertImageDtype(torch.uint8)(image_clamped)
+
+    write_png(out_uint8.cpu(), output_path)
